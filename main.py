@@ -1,9 +1,15 @@
 from CTModel import *
 
-model = CTModel(4, 4, CooperativeCTAgents=1, SelfishCTAgents=1, IntelligentCTAgents=0)
+commitments_satisfied = 0
+conditional_commitments = 0
 
-model.run_model()
+for i in range(1):
+    model = CTModel(8, 8, CooperativeCTAgents=2)
+    model.run_model()
+    commitments_satisfied += model.released_commitments
+    conditional_commitments += model.commitments_created
 
-print('Number of Released Commitments for this game was ' + str(model.released_commitments))
+print('Number of Satisfied Commitments for this game was ' + str(commitments_satisfied))
+print('Number of Conditional Commitments created in this game was ' + str(conditional_commitments))
 
 

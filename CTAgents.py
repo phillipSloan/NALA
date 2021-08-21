@@ -1,12 +1,39 @@
 from mesa import Agent
-from Commitment import Commitment
 import pandas as pd
 import random
 
 
+def make_message(message_id, agent, other_agent, message_type, tile_wanted, tile_offered):
+    message = {"step": [agent.model.schedule.steps],
+               "message_id": [message_id],
+               "read": [False],
+               "message_type": [message_type],
+               "debtor": [agent],
+               "creditor": [other_agent],
+               "antecedent": [tile_wanted],
+               "consequent": [tile_offered],
+               "conditional": [None],
+               "detached": [None],
+               "released": [None]
+               }
+    message = pd.DataFrame(message)
+    message.set_index("message_id", inplace=True)
+    return message
+
+
+def make_swap(commitment_id, agent, tile):
+    swap = {"step": [agent.model.schedule.steps],
+            "commitment_id": [commitment_id],
+            "agent": [agent],
+            "tile": [tile]
+            }
+    swap = pd.DataFrame(swap)
+    return swap
+
+
 # Create a tile class - Each tile has a colour
 class Tile(Agent):
-    colours = list(('Red', 'Green', 'Blue', 'Yellow'))
+    colours = list(('Red', 'Green', 'Blue', 'Yellow', 'Cyan'))
 
     def __init__(self, unique_id, model, pos):
         super().__init__(unique_id, model)
@@ -33,6 +60,15 @@ class Tile(Agent):
         pass
 
     def evaluate_offers(self):
+        pass
+
+    def select_path(self):
+        pass
+
+    def check_for_commitments(self):
+        pass
+
+    def execute_commitments(self):
         pass
 
 
@@ -65,51 +101,51 @@ class CTAgent(Agent):
         # self.pos = coords
         self.active = True
         self.human = False
+        self.first_move = True
         self.num_of_moves = 0
         self.pos = pos
         self.strikes = 0
         self.score = 0
-        self.tiles = {'Red': 0, 'Green': 0, 'Blue': 0, 'Yellow': 0}
+        self.tiles = {'Red': 0, 'Green': 0, 'Blue': 0, 'Yellow': 0, 'Cyan': 0}
         self.path_tiles = {}
         # List of all possible paths from the agents position to the goal
         self.all_paths = []
         self.filtered_paths = []
-        # Paths the agent is able to get too
-        self.possible_paths = []
-        # Paths the agent will need to negotiate to get too
-        self.negotiable_paths = []
         # Path the agent has selected to try and get too
         self.path = []
         # Tile the Agent Needs / Will Swap to get to through path
         self.tile_wanted = 'Blank'
         self.tile_offered = 'Blank'
         # Dataframe used to store the agents previous games
-        self.memory = pd.DataFrame(
-            columns=["step", "negotiation_id", "evaluated", "creditor", "debtor",
-                     "antecedent", "consequent", "conditional", "detached", "released"])
-        self.memory.set_index("negotiation_id", inplace=True)
+        self.messages = pd.DataFrame(
+            columns=["step", "message_id", "read",
+                     "message_type", "debtor",
+                     "creditor", "antecedent", "consequent",
+                     "conditional", "detached", "released"])
+        self.messages.set_index("message_id", inplace=True)
+
+        self.swaps = pd.DataFrame(
+            columns=["step", "commitment_id", "agent", "tile"])
 
         self.populate_agent_tiles()
         x, y = self.pos
         self.find_all_paths(self.model, [], x, y)
         self.filter_paths()
-        self.select_path()
+        # Agent picks a path to offer on
+        self.pick_path()
         self.analyse_path()
-
 
     ''' Ensures the Agent has x amount of tiles '''
 
     def populate_agent_tiles(self):
-        colours = list(('Red', 'Green', 'Blue', 'Yellow'))
+        colours = list(('Red', 'Green', 'Blue', 'Yellow', 'Cyan'))
         x = 0
-        total = int(self.model.get_manhattan() * 0.7)
+        total = int(self.model.get_manhattan() * 0.5)
         while x < total:
             # Popping a random colour out of the colours list
             colour = random.choice(colours)
             self.tiles[colour] += 1
             x += 1
-
-        self.path_tiles = self.tiles.copy()
 
     ''' 
         Recursive DFS algorithm to find all possible paths from current
@@ -122,10 +158,8 @@ class CTAgent(Agent):
         if out_of_bounds(model, x, y):
             return
 
-        '''
-         if we are at the destination of the path, add the solution to
-         the possible paths
-        '''
+        #  if we are at the destination of the path, add the solution to
+        #  the possible paths
 
         if x == dx and y == dy:
             path.append((x, y, self.model.get_tile(x, y).colour))
@@ -142,7 +176,6 @@ class CTAgent(Agent):
             return
 
         # set as visited
-
         path.append([x, y, self.model.get_tile(x, y).colour])
         self.model.set_tile_visited(x, y)
 
@@ -176,19 +209,39 @@ class CTAgent(Agent):
                 if path not in self.filtered_paths:
                     self.filtered_paths.append(path)
 
-    def select_path(self):
-        self.path = random.choice(self.filtered_paths)
+    def pick_path(self):
+        highest = -2147483648
+        best_paths = []
+        path_list = []
+        for index, path in enumerate(self.filtered_paths):
+            self.path = path
+            self.analyse_path()
+            length = 0
+            for key, value in self.path_tiles.items():
+                if value < 0:
+                    length += value
+            if length > highest:
+                highest = length
+            path_list.append((index, length))
+
+        for path in path_list:
+            if highest == path[1]:
+                best_paths.append(self.filtered_paths[path[0]])
+
+        self.path = random.choice(best_paths)
+        self.analyse_path()
 
     def analyse_path(self):
-        for path in self.path:
-            _, _, colour = path
+        self.path_tiles = self.tiles.copy()
+        for tile in self.path:
+            _, _, colour = tile
             self.path_tiles[colour] -= 1
 
-    def add_offer_to_memory(self, offer, evaluated):
-        if evaluated:
-            offer['evaluated'] = True
-        self.memory = self.memory.append(offer)
-        offer['evaluated'] = False
+    def add_message_to_memory(self, message, read):
+        if read:
+            message['read'] = True
+        self.messages = self.messages.append(message)
+        message['read'] = False
 
     def needs_tiles(self):
         for value in self.path_tiles.values():
@@ -222,10 +275,8 @@ class CTAgent(Agent):
             return False
 
     def offered_before(self, other_agent, colour):
-        if len(self.memory) == 0:
-            return False
-        offers = self.memory[(self.memory['creditor'] == self)
-                             & (self.memory['debtor'] == other_agent)]
+        offers = self.messages[(self.messages['debtor'] == self) &
+                               (self.messages['creditor'] == other_agent)]
 
         for _, offer in offers.iterrows():
             if offer['consequent'] == colour:
@@ -235,61 +286,137 @@ class CTAgent(Agent):
     def is_human(self):
         return self.human
 
-    def make_offer(self, other_agent):
-        offer = {"step": [self.model.schedule.steps],
-                 "negotiation_id": [self.model.return_negotiation_id()],
-                 "evaluated": [False],
-                 "creditor": [self],
-                 "debtor": [other_agent],
-                 "antecedent": [self.tile_wanted],
-                 "consequent": [self.tile_offered],
-                 "conditional": [False],
-                 "detached": [False],
-                 "released": [False]
-                 }
-        offer = pd.DataFrame(offer)
-        offer.set_index("negotiation_id", inplace=True)
-        return offer
-
     # Sends an offer to another agent
     def offer(self, other_agent=None):
         if other_agent is None:
             other_agent = self.model.pick_agent(self)
+
         if self.needs_tiles():
             self.select_tile_needed()
             if self.select_tile_offered(other_agent):
                 # Record an offered commitment and send the offer to the other agent
-                offer = self.make_offer(other_agent)
-                self.add_offer_to_memory(offer, True)
+                # offer = self.make_offer(self, other_agent)
+                message = make_message(self.model.return_id(), self, other_agent, "OFFER",
+                                       self.tile_wanted, self.tile_offered)
+                self.add_message_to_memory(message, True)
                 # Send offer message to other agent
-                other_agent.send_offer(offer)
+                other_agent.send_message(message)
 
-    def send_offer(self, offer):
-        self.add_offer_to_memory(offer, False)
+    def counter_offer(self, other_agent, tile_requested, tile_offered, message_id):
+        # If the agents does not have the tile requested available
+        if self.tiles[tile_requested] <= 0:
+            return
+
+        if self.needs_tiles():
+            for new_colour, amount in self.path_tiles.items():
+                if amount > 0:
+                    if new_colour != tile_offered and new_colour != tile_requested:
+                        # Generate Offer
+                        message = make_message(message_id, other_agent, self, "COUNTER",
+                                               tile_requested, new_colour)
+                        self.add_message_to_memory(message, True)
+                        # Send offer message to other agent
+                        other_agent.send_message(message)
+                        return
+
+    def send_message(self, message):
+        self.add_message_to_memory(message, False)
 
     def evaluate_offers(self):
         # Create a DataFrame with offers that have not yet been reviewed
-        offers = self.memory[(self.memory['evaluated'] == False)]
+        # offers = self.memory[(self.memory['evaluated'] == False)]
+        offers = self.messages[(self.messages['message_type'] == 'OFFER') &
+                               (self.messages['read'] == False)]
         # for each offer
         for index, offer in offers.iterrows():
-            creditor = offer['creditor']
-            tile_requested = offer['antecedent']
-            tile_offered = offer['consequent']
-            self.memory.at[index, 'evaluated'] = True
-            # Check if it aligns with the agents values
-            self.evaluate_offer(index, creditor, tile_offered, tile_requested)
+            if offer['debtor'] is not self:
+                debtor = offer['debtor']
+                tile_wanted = offer['antecedent']
+                tile_offered = offer['consequent']
+                self.messages.at[index, 'read'] = True
+                self.evaluate_offer(index, debtor, tile_wanted, tile_offered)
+            else:
+                creditor = offer['creditor']
+                tile_wanted = offer['consequent']
+                tile_offered = offer['antecedent']
+                # Check if it aligns with the agents values
+                self.messages.at[index, 'read'] = True
+                self.evaluate_offer(index, creditor, tile_wanted, tile_offered)
 
-    def evaluate_offer(self, offer_id, other_agent, tile_offered, tile_requested):
-        # Basic agent always creates a commitment
-        commitment = Commitment(offer_id, other_agent, self, tile_requested, tile_offered)
-        # if the antecedent holds
-        if commitment.antecedent():
-            # if the consequent holds
-            if commitment.consequent():
-                # we release the commitment
+    def evaluate_offer(self, offer_id, other_agent, tile_wanted, tile_offered):
+        # Basic agent always sends an accept message back to the other agent
+        message = make_message(offer_id, other_agent, self, "ACCEPT",
+                               tile_wanted, tile_offered)
+        self.add_message_to_memory(message, True)
+        # Send offer message to other agent
+        other_agent.send_message(message)
+
+    def check_for_commitments(self):
+        accept_msg = self.messages[(self.messages['message_type'] == "ACCEPT") &
+                                   (self.messages['debtor'] == self) &
+                                   (self.messages['read'] == False)]
+
+        for index, commitment in accept_msg.iterrows():
+            self.messages.at[index, 'read'] = True
+            creditor = commitment['creditor']
+            antecedent = commitment['antecedent']
+            consequent = commitment['consequent']
+            commitment = make_message(index, self, creditor, 'CREATE',
+                                      antecedent, consequent)
+            commitment['conditional'] = True
+            self.add_message_to_memory(commitment, True)
+            self.model.commitments_created += 1
+            # Send offer message to other agent
+            creditor.send_message(commitment)
+
+    def execute_commitments(self):
+        self.execute_conditionals()
+        self.execute_detached()
+
+    def execute_conditionals(self):
+        # Create a list of commitments that have not yet been actioned
+        commitments = self.messages[(self.messages['message_type'] == 'CREATE') &
+                                    (self.messages['creditor'] == self) &
+                                    (self.messages['read'] == False)]
+
+        for index, commitment in commitments.iterrows():
+            self.messages.at[index, 'read'] = True
+            debtor = commitment['debtor']
+            antecedent = commitment['antecedent']
+            consequent = commitment['consequent']
+            if self.send_tile(index, debtor, antecedent):
+                commitment = make_message(index, debtor, self, 'DETACH',
+                                          antecedent, consequent)
+                commitment['conditional'] = True
+                commitment['detached'] = True
+                self.add_message_to_memory(commitment, True)
+                # Send offer message to other agent
+                debtor.send_message(commitment)
+                self.model.detached_commitments += 1
+
+    def execute_detached(self):
+        # Create a list of detached commitments
+        commitments = self.messages[(self.messages['message_type'] == 'DETACH') &
+                                    (self.messages['debtor'] == self) &
+                                    (self.messages['read'] == False)]
+
+        for index, commitment in commitments.iterrows():
+            self.messages.at[index, 'read'] = True
+            creditor = commitment['creditor']
+            antecedent = commitment['antecedent']
+            consequent = commitment['consequent']
+            if self.send_tile(index, creditor, antecedent):
+                commitment = make_message(index, self, creditor, 'RELEASE',
+                                          antecedent, consequent)
+                commitment['conditional'] = True
+                commitment['detached'] = True
+                commitment['released'] = True
+                self.add_message_to_memory(commitment, True)
+                # Send offer message to other agent
+                creditor.send_message(commitment)
                 self.model.released_commitments += 1
 
-    def send_tile(self, agent_receiving, tile):
+    def send_tile(self, commitment_id, agent_receiving, tile):
         # remove the tiles from the agent and add them to the agent receiving the tiles
         # if the agent giving tiles has enough, perform the trade.
         if self.tiles[tile] > 0:
@@ -297,9 +424,40 @@ class CTAgent(Agent):
             self.path_tiles[tile] -= 1
             agent_receiving.tiles[tile] += 1
             agent_receiving.path_tiles[tile] += 1
+            swap = make_swap(commitment_id, self, tile)
+            agent_receiving.record_swap(swap)
             return True
         else:
             return False
+
+    def record_swap(self, swap):
+        self.swaps = self.swaps.append(swap)
+
+    def select_path(self):
+        if len(self.filtered_paths) == 1:
+            self.path = random.choice(self.all_paths)
+            return
+        longest_paths = []
+        lengths = []
+        max_length = 0
+        for index, path in enumerate(self.filtered_paths):
+            path_length = 0
+            tiles = self.tiles.copy()
+            for tile in path:
+                _, _, colour = tile
+                path_length += 1
+                tiles[colour] -= 1
+                if tiles[colour] < 0:
+                    path_length -= 1
+                    break
+            if path_length > max_length:
+                max_length = path_length
+            lengths.append((index, path_length))
+
+        for length in lengths:
+            if length[1] == max_length:
+                longest_paths.append(self.filtered_paths[length[0]])
+        self.path = random.choice(longest_paths)
 
     def move(self):
         if not self.active:

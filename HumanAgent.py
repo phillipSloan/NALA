@@ -1,4 +1,4 @@
-from CTAgents import CTAgent
+from CTAgents import CTAgent, make_message
 from Commitment import Commitment
 
 
@@ -23,7 +23,7 @@ class HumanCTAgent(CTAgent):
 
     def offer(self, other_agent=None):
         offer = ["Y", "Yes", "No", "N"]
-        colours = ['Red', 'Blue', 'Yellow', 'Green']
+        colours = ['Red', 'Blue', 'Yellow', 'Green', 'Cyan']
         choice = ""
 
         if other_agent is None:
@@ -39,11 +39,12 @@ class HumanCTAgent(CTAgent):
             print('What tile do you want to offer for trade?')
             result = get_choice(colours)
             self.tile_offered = result
-            offer = self.make_offer(other_agent)
+            offer = self.make_offer(self, other_agent)
             self.add_offer_to_memory(offer, True)
             # Send offer message to other agent
             other_agent.send_offer(offer)
-            print('Offer Sent!')
+
+            print('Offer Sent!\n\n')
 
     def evaluate_offers(self):
         print('----------------------------------------------')
@@ -72,18 +73,31 @@ class HumanCTAgent(CTAgent):
         print('Do you accept the trade?')
         result = get_choice(offer)
         if result == 'Y' or result == 'Yes':
-            commitment = Commitment(offer_id, other_agent, self, tile_requested, tile_offered)
-            # if the antecedent holds
-            if commitment.antecedent():
-                # if the consequent holds
-                if commitment.consequent():
-                    # we release the commitment
-                    self.model.released_commitments += 1
+            self.memory.at[offer_id, 'conditional'] = True
+            send_message(other_agent, offer_id, 'conditional', True)
+            self.model.commitments_created += 1
         else:
             print('Do you want to send a counter offer?')
             result = get_choice(offer)
             if result == 'Y' or result == 'Yes':
-                self.offer(other_agent)
+                self.counter_offer(other_agent)
+
+    def counter_offer(self, other_agent, tile_requested, tile_offered, offer_id):
+        # # If the agents does not have the tile requested available
+        # if self.path_tiles[tile_requested] <= 0:
+        #     print('Sorry! You do not have a ' + str(tile_requested) + ' tile to trade!')
+        #     return
+
+        other_agent.tile_wanted = tile_requested
+        colours = ['Red', 'Blue', 'Yellow', 'Green', 'Cyan']
+        colours.remove(tile_requested)
+        print('What tile do you want to offer for trade?')
+        result = get_choice(colours)
+        other_agent.tile_offered = result
+        offer = self.make_offer(other_agent, self, offer_id)
+        self.add_offer_to_memory(offer, True)
+        # Send offer message to other agent
+        other_agent.send_offer(offer)
 
     def move(self):
         if not self.active:

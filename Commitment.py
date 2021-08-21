@@ -7,6 +7,7 @@ class Commitment:
     def __init__(self, offer_id, agent_debtor, agent_creditor, tile_requested, tile_offered):
         # C(debtor, creditor, antecedent_tile , consequent_tile)
         self.id = offer_id
+        agent_debtor.model.commitments_created += 1
         self.debtor = agent_debtor
         self.creditor = agent_creditor
         self.consequent_tile = tile_offered

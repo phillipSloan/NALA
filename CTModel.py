@@ -3,12 +3,14 @@ import random
 from mesa import Model
 from mesa.datacollection import DataCollector
 from mesa.time import StagedActivation
+from CTtime import CTSchedule
 from mesa.space import MultiGrid
 from CTAgents import CTAgent, Tile
 from CooperativeCTAgent import CooperativeCTAgent
 from SelfishCTAgent import SelfishCTAgent
 from IntelligentCTAgent import IntelligentCTAgent
 from HumanAgent import HumanCTAgent
+
 
 def success_negotiations(model):
     return model.released_commitments
@@ -29,7 +31,10 @@ class CTModel(Model):
         self.height = height
         self.width = width
         self.grid = MultiGrid(width, height, False)
-        self.schedule = StagedActivation(self, ["offer", "evaluate_offers", "move"])
+        self.schedule = CTSchedule(self, ["offer", "evaluate_offers",
+                                          "check_for_commitments",
+                                          "execute_commitments"],
+                                   ["move"])
         self._goal = (self.random.randrange(
             self.grid.height), self.random.randrange(self.grid.width))
         self.CTAgents = CTAgents
@@ -41,15 +46,22 @@ class CTModel(Model):
         self.add_tiles()
         self.add_agents()
         self.released_commitments = 0
-        self.negotiation_id = 0
+        self.detached_commitments = 0
+        self.commitments_created = 0
+        self.offers_sent = 0
+        self.counter_offers_sent = 0
+        self.agents_negotiating = True
+        self.agents_select_path = True
+
+        self._id = 0
 
         self.datacollector = DataCollector(
             model_reporters={"Success": success_negotiations},
-            )
+        )
 
-    def return_negotiation_id(self) -> int:
-        self.negotiation_id += 1
-        return self.negotiation_id - 1
+    def return_id(self) -> int:
+        self._id += 1
+        return self._id - 1
 
     def get_goal(self):
         return self._goal
@@ -72,6 +84,11 @@ class CTModel(Model):
                 tile = Tile(self.next_id(), self, (x, y))
                 self.grid.place_agent(tile, (x, y))
                 self.schedule.add(tile)
+
+    def run_model(self) -> None:
+
+        while self.running:
+            self.step()
 
     def add_agents(self):
         # Place agents onto the model
@@ -154,17 +171,29 @@ class CTModel(Model):
             print(str(type(agent).__name__) + ' ' + str(agent.unique_id) + ' scored ' + str(agent.score) + ' points.')
 
     def step(self):
+        if self.schedule.steps == 15:
+            self.agents_negotiating = False
 
-        self.schedule.step()
-        self.datacollector.collect(self)
+        if self.agents_negotiating:
+            self.schedule.step()
+            self.datacollector.collect(self)
+        else:
 
-        if not self.still_running():
-            self.running = False
-            self.score_agents()
-            # agents = self.create_agent_list()
-            # for agent in agents:
-            #     file_name = str(agent) + '.csv'
-            #     agent.memory.to_csv('/Users/phillip/Documents/dissertation/' + file_name)
+            if self.agents_select_path:
+                agents = self.create_agent_list()
+                for agent in agents:
+                    agent.select_path()
+                self.agents_select_path = False
+
+            self.schedule.move_agents()
+            if not self.still_running():
+                self.running = False
+
+                self.score_agents()
+                # agents = self.create_agent_list()
+                # for agent in agents:
+                #     file_name = str(agent) + '.csv'
+                #     agent.memory.to_csv('/Users/phillip/Documents/thesis/' + file_name)
 
         ''' What is a successful negotiation
          is it when tiles are traded?
@@ -175,6 +204,3 @@ class CTModel(Model):
          what is the ratio of commitments to released commitments?
          
          '''
-
-
-
