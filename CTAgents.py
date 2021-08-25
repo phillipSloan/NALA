@@ -14,7 +14,7 @@ def make_message(message_id, agent, other_agent, message_type, tile_wanted, tile
                "consequent": [tile_offered],
                "conditional": [None],
                "detached": [None],
-               "released": [None]
+               "satisfied": [None]
                }
     message = pd.DataFrame(message)
     message.set_index("message_id", inplace=True)
@@ -121,7 +121,7 @@ class CTAgent(Agent):
             columns=["step", "message_id", "read",
                      "message_type", "debtor",
                      "creditor", "antecedent", "consequent",
-                     "conditional", "detached", "released"])
+                     "conditional", "detached", "satisfied"])
         self.messages.set_index("message_id", inplace=True)
 
         self.swaps = pd.DataFrame(
@@ -140,7 +140,7 @@ class CTAgent(Agent):
     def populate_agent_tiles(self):
         colours = list(('Red', 'Green', 'Blue', 'Yellow', 'Cyan'))
         x = 0
-        total = int(self.model.get_manhattan() * 0.5)
+        total = int(self.model.get_manhattan())
         while x < total:
             # Popping a random colour out of the colours list
             colour = random.choice(colours)
@@ -291,11 +291,12 @@ class CTAgent(Agent):
         if other_agent is None:
             other_agent = self.model.pick_agent(self)
 
+        self.analyse_path()
+
         if self.needs_tiles():
             self.select_tile_needed()
             if self.select_tile_offered(other_agent):
                 # Record an offered commitment and send the offer to the other agent
-                # offer = self.make_offer(self, other_agent)
                 message = make_message(self.model.return_id(), self, other_agent, "OFFER",
                                        self.tile_wanted, self.tile_offered)
                 self.add_message_to_memory(message, True)
@@ -312,8 +313,8 @@ class CTAgent(Agent):
                 if amount > 0:
                     if new_colour != tile_offered and new_colour != tile_requested:
                         # Generate Offer
-                        message = make_message(message_id, other_agent, self, "COUNTER",
-                                               tile_requested, new_colour)
+                        message = make_message(message_id, self, other_agent, "COUNTER",
+                                               new_colour, tile_requested)
                         self.add_message_to_memory(message, True)
                         # Send offer message to other agent
                         other_agent.send_message(message)
@@ -344,30 +345,30 @@ class CTAgent(Agent):
                 self.evaluate_offer(index, creditor, tile_wanted, tile_offered)
 
     def evaluate_offer(self, offer_id, other_agent, tile_wanted, tile_offered):
-        # Basic agent always sends an accept message back to the other agent
-        message = make_message(offer_id, other_agent, self, "ACCEPT",
-                               tile_wanted, tile_offered)
-        self.add_message_to_memory(message, True)
-        # Send offer message to other agent
-        other_agent.send_message(message)
-
-    def check_for_commitments(self):
-        accept_msg = self.messages[(self.messages['message_type'] == "ACCEPT") &
-                                   (self.messages['debtor'] == self) &
-                                   (self.messages['read'] == False)]
-
-        for index, commitment in accept_msg.iterrows():
-            self.messages.at[index, 'read'] = True
-            creditor = commitment['creditor']
-            antecedent = commitment['antecedent']
-            consequent = commitment['consequent']
-            commitment = make_message(index, self, creditor, 'CREATE',
-                                      antecedent, consequent)
-            commitment['conditional'] = True
-            self.add_message_to_memory(commitment, True)
-            self.model.commitments_created += 1
+        if self.can_help(tile_wanted):
+            # Trade is possible - agree to make a commitment
+            message = make_message(offer_id, self, other_agent, "ACCEPT",
+                                   tile_offered, tile_wanted)
+            message['conditional'] = True
+            self.add_message_to_memory(message, True)
             # Send offer message to other agent
-            creditor.send_message(commitment)
+            other_agent.send_message(message)
+        else:
+            # If Agent does not have these tile to give reject that offer
+            message = make_message(offer_id, self, other_agent, "REJECT",
+                                   tile_offered, tile_wanted)
+            self.add_message_to_memory(message, True)
+            # Send offer message to other agent
+            other_agent.send_message(message)
+            # Sends a counter offer back if possible
+            self.counter_offer(other_agent, tile_wanted, tile_offered, offer_id)
+
+    def can_help(self, tile_wanted):
+        # Agent checks if they have the tile requested
+        if self.tiles[tile_wanted] > 0:
+            return True
+        else:
+            return False
 
     def execute_commitments(self):
         self.execute_conditionals()
@@ -375,7 +376,7 @@ class CTAgent(Agent):
 
     def execute_conditionals(self):
         # Create a list of commitments that have not yet been actioned
-        commitments = self.messages[(self.messages['message_type'] == 'CREATE') &
+        commitments = self.messages[(self.messages['message_type'] == 'ACCEPT') &
                                     (self.messages['creditor'] == self) &
                                     (self.messages['read'] == False)]
 
@@ -385,14 +386,22 @@ class CTAgent(Agent):
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.send_tile(index, debtor, antecedent):
-                commitment = make_message(index, debtor, self, 'DETACH',
-                                          antecedent, consequent)
-                commitment['conditional'] = True
-                commitment['detached'] = True
-                self.add_message_to_memory(commitment, True)
+                message = make_message(index, debtor, self, 'DETACH',
+                                       antecedent, consequent)
+                message['conditional'] = True
+                message['detached'] = True
+                self.add_message_to_memory(message, True)
                 # Send offer message to other agent
-                debtor.send_message(commitment)
+                debtor.send_message(message)
                 self.model.detached_commitments += 1
+            else:
+                message = make_message(index, debtor, self, 'RELEASE',
+                                       antecedent, consequent)
+                message['conditional'] = True
+                message['detached'] = False
+                self.add_message_to_memory(message, True)
+                # Send offer message to other agent
+                debtor.send_message(message)
 
     def execute_detached(self):
         # Create a list of detached commitments
@@ -405,16 +414,25 @@ class CTAgent(Agent):
             creditor = commitment['creditor']
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
-            if self.send_tile(index, creditor, antecedent):
-                commitment = make_message(index, self, creditor, 'RELEASE',
-                                          antecedent, consequent)
-                commitment['conditional'] = True
-                commitment['detached'] = True
-                commitment['released'] = True
-                self.add_message_to_memory(commitment, True)
+            if self.send_tile(index, creditor, consequent):
+                message = make_message(index, self, creditor, 'SATISFIED',
+                                       antecedent, consequent)
+                message['conditional'] = True
+                message['detached'] = True
+                message['satisfied'] = True
+                self.add_message_to_memory(message, True)
                 # Send offer message to other agent
-                creditor.send_message(commitment)
+                creditor.send_message(message)
                 self.model.released_commitments += 1
+            else:
+                message = make_message(index, self, creditor, 'CANCEL',
+                                       antecedent, consequent)
+                message['conditional'] = True
+                message['detached'] = True
+                message['satisfied'] = False
+                self.add_message_to_memory(message, True)
+                # Send offer message to other agent
+                creditor.send_message(message)
 
     def send_tile(self, commitment_id, agent_receiving, tile):
         # remove the tiles from the agent and add them to the agent receiving the tiles

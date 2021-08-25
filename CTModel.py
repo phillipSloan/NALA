@@ -2,13 +2,13 @@ import random
 
 from mesa import Model
 from mesa.datacollection import DataCollector
-from mesa.time import StagedActivation
 from CTtime import CTSchedule
 from mesa.space import MultiGrid
 from CTAgents import CTAgent, Tile
 from CooperativeCTAgent import CooperativeCTAgent
 from SelfishCTAgent import SelfishCTAgent
 from IntelligentCTAgent import IntelligentCTAgent
+from CompetitiveCTAgent import CompetitiveCTAgent
 from HumanAgent import HumanCTAgent
 
 
@@ -25,6 +25,7 @@ class CTModel(Model):
             CooperativeCTAgents=0,
             SelfishCTAgents=0,
             IntelligentCTAgents=0,
+            CompetitiveCTAgents=0,
             HumanCTAgents=0
     ):
         super().__init__()
@@ -32,7 +33,6 @@ class CTModel(Model):
         self.width = width
         self.grid = MultiGrid(width, height, False)
         self.schedule = CTSchedule(self, ["offer", "evaluate_offers",
-                                          "check_for_commitments",
                                           "execute_commitments"],
                                    ["move"])
         self._goal = (self.random.randrange(
@@ -41,6 +41,7 @@ class CTModel(Model):
         self.CooperativeCTAgents = CooperativeCTAgents
         self.SelfishCTAgents = SelfishCTAgents
         self.IntelligentCTAgents = IntelligentCTAgents
+        self.CompetitiveCTAgents = CompetitiveCTAgents
         self.HumanCTAgents = HumanCTAgents
 
         self.add_tiles()
@@ -113,6 +114,12 @@ class CTModel(Model):
         for i in range(self.IntelligentCTAgents):
             coords = self.return_coords()
             agent = IntelligentCTAgent(self.next_id(), self, coords)
+            self.schedule.add(agent)
+            self.grid.place_agent(agent, coords)
+
+        for i in range(self.CompetitiveCTAgents):
+            coords = self.return_coords()
+            agent = CompetitiveCTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
 

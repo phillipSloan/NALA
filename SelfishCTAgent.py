@@ -1,5 +1,4 @@
 from CTAgents import CTAgent, make_message
-from Commitment import Commitment
 
 
 class SelfishCTAgent(CTAgent):
@@ -12,15 +11,16 @@ class SelfishCTAgent(CTAgent):
         # Checking to see if this trade helps the agent reach the goal
         if self.helpful_trade(tile_offered):
             # Trade is possible - agree to make a commitment
-            message = make_message(offer_id, other_agent, self, "ACCEPT",
-                                   tile_wanted, tile_offered)
+            message = make_message(offer_id, self, other_agent, "ACCEPT",
+                                   tile_offered, tile_wanted)
+            message['conditional'] = True
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
             other_agent.send_message(message)
         else:
             # If Agent does not have these tile to give reject that offer
-            message = make_message(offer_id, other_agent, self, "REJECT",
-                                   tile_wanted, tile_offered)
+            message = make_message(offer_id, self, other_agent, "REJECT",
+                                   tile_offered, tile_wanted)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
             other_agent.send_message(message)
@@ -32,6 +32,3 @@ class SelfishCTAgent(CTAgent):
             return True
         else:
             return False
-
-
-

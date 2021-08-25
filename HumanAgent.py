@@ -39,50 +39,68 @@ class HumanCTAgent(CTAgent):
             print('What tile do you want to offer for trade?')
             result = get_choice(colours)
             self.tile_offered = result
-            offer = self.make_offer(self, other_agent)
-            self.add_offer_to_memory(offer, True)
+            message = make_message(self.model.return_id(), self, other_agent, "OFFER",
+                                   self.tile_wanted, self.tile_offered)
+            self.add_message_to_memory(message, True)
             # Send offer message to other agent
-            other_agent.send_offer(offer)
-
+            other_agent.send_message(message)
             print('Offer Sent!\n\n')
 
     def evaluate_offers(self):
         print('----------------------------------------------')
         # Create a DataFrame with offers that have not yet been reviewed
-        offers = self.memory[(self.memory['evaluated'] == False)]
+        offers = self.messages[(self.messages['message_type'] == 'OFFER') &
+                               (self.messages['read'] == False)]
         # for each offer
         if len(offers) == 0:
             print('No Offers to Review')
             return
 
         for index, offer in offers.iterrows():
-            creditor = offer['creditor']
-            tile_requested = offer['antecedent']
-            tile_offered = offer['consequent']
-            self.memory.at[index, 'evaluated'] = True
-            # Check if it aligns with the agents values
-            self.evaluate_offer(index, creditor, tile_offered, tile_requested)
+            if offer['debtor'] is not self:
+                debtor = offer['debtor']
+                tile_wanted = offer['antecedent']
+                tile_offered = offer['consequent']
+                self.messages.at[index, 'read'] = True
+                self.evaluate_offer(index, debtor, tile_wanted, tile_offered)
+            else:
+                creditor = offer['creditor']
+                tile_wanted = offer['consequent']
+                tile_offered = offer['antecedent']
+                # Check if it aligns with the agents values
+                self.messages.at[index, 'read'] = True
+                self.evaluate_offer(index, creditor, tile_wanted, tile_offered)
 
-    def evaluate_offer(self, offer_id, other_agent, tile_offered, tile_requested):
+    def evaluate_offer(self, offer_id, other_agent, tile_wanted, tile_offered):
         offer = ["Y", "Yes", "No", "N"]
 
         print('You have received an offer for trade from agent ' + str(other_agent.unique_id))
-        print('The agent is asking for a ' + str(tile_requested) + " tile .")
+        print('The agent is asking for a ' + str(tile_wanted) + " tile .")
         print('The agent is offering a ' + str(tile_offered) + " tile in return.")
         print('These are your current tiles: ' + str(self.tiles))
         print('Do you accept the trade?')
         result = get_choice(offer)
         if result == 'Y' or result == 'Yes':
-            self.memory.at[offer_id, 'conditional'] = True
-            send_message(other_agent, offer_id, 'conditional', True)
-            self.model.commitments_created += 1
+            message = make_message(offer_id, self, other_agent, "ACCEPT",
+                                   tile_offered, tile_wanted)
+            message['conditional'] = True
+            self.add_message_to_memory(message, True)
+            # Send offer message to other agent
+            other_agent.send_message(message)
         else:
+            message = make_message(offer_id, self, other_agent, "REJECT",
+                                   tile_offered, tile_wanted)
+            self.add_message_to_memory(message, True)
+            # Send offer message to other agent
+            other_agent.send_message(message)
+
             print('Do you want to send a counter offer?')
             result = get_choice(offer)
             if result == 'Y' or result == 'Yes':
                 self.counter_offer(other_agent)
 
-    def counter_offer(self, other_agent, tile_requested, tile_offered, offer_id):
+
+    def counter_offer(self, other_agent, tile_requested, tile_offered, message_id):
         # # If the agents does not have the tile requested available
         # if self.path_tiles[tile_requested] <= 0:
         #     print('Sorry! You do not have a ' + str(tile_requested) + ' tile to trade!')
@@ -91,13 +109,13 @@ class HumanCTAgent(CTAgent):
         other_agent.tile_wanted = tile_requested
         colours = ['Red', 'Blue', 'Yellow', 'Green', 'Cyan']
         colours.remove(tile_requested)
-        print('What tile do you want to offer for trade?')
+        print('What colour tile do you want to ask for?')
         result = get_choice(colours)
-        other_agent.tile_offered = result
-        offer = self.make_offer(other_agent, self, offer_id)
-        self.add_offer_to_memory(offer, True)
+        message = make_message(message_id, self, other_agent, "COUNTER",
+                               result, tile_requested)
+        self.add_message_to_memory(message, True)
         # Send offer message to other agent
-        other_agent.send_offer(offer)
+        other_agent.send_message(message)
 
     def move(self):
         if not self.active:

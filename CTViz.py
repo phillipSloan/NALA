@@ -52,8 +52,8 @@ CTChart = ChartModule([{"Label": "Success",
                       data_collector_name='datacollector')
 
 model_params = {
-    "height": 6,
-    "width": 6,
+    "height": 4,
+    "width": 4,
     "CTAgents": UserSettableParameter("slider", "CTAgents", 2, 0, 5, 1),
     "CooperativeCTAgents": UserSettableParameter("slider", "CooperativeCTAgents", 0, 0, 5, 1),
     "SelfishCTAgents": UserSettableParameter("slider", "SelfishCTAgents", 0, 0, 5, 1),
@@ -61,7 +61,7 @@ model_params = {
     "HumanCTAgents": UserSettableParameter("slider", "HumanCTAgents", 0, 0, 5, 1)
 }
 
-CTgrid = CanvasGrid(draw_coloured_trails, 6, 6, 500, 500)
+CTgrid = CanvasGrid(draw_coloured_trails, 4, 4, 500, 500)
 
 server = ModularServer(CTModel,
                        [CTgrid, CTChart],
