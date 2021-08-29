@@ -1,7 +1,7 @@
 from CTAgents import CTAgent, make_message
 
 
-def offer_success_rate(offers, commitments) -> int:
+def offer_success_rate(offers, commitments):
     total_offers = len(offers)
     total_commitments = len(commitments)
     if total_offers > 0:
@@ -19,13 +19,13 @@ class IntelligentCTAgent(CTAgent):
             # Trade is possible - agree to make a commitment
             message = make_message(offer_id, self, other_agent, "ACCEPT",
                                    tile_offered, tile_wanted)
-            message['conditional'] = True
+            message['reciprocal'] = True
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
             other_agent.send_message(message)
         else:
-            message = make_message(offer_id, self, other_agent, "REJECT",
-                                   tile_offered, tile_wanted)
+            message = make_message(offer_id, other_agent, self, "REJECT",
+                                   tile_wanted, tile_offered)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
             other_agent.send_message(message)
@@ -63,5 +63,34 @@ class IntelligentCTAgent(CTAgent):
             # other_agent has accepted less than this agent
             return False
 
-    # def send_tile(self, commitment_id, agent_receiving, tile):
-    #     pass
+    def execute_detached(self):
+        # Create a list of detached commitments
+        commitments = self.messages[(self.messages['message_type'] == 'DETACH') &
+                                    (self.messages['debtor'] == self) &
+                                    (self.messages['read'] == False)]
+
+        for index, commitment in commitments.iterrows():
+            self.messages.at[index, 'read'] = True
+            creditor = commitment['creditor']
+            antecedent = commitment['antecedent']
+            consequent = commitment['consequent']
+
+            if self.send_tile(index, creditor, consequent):
+                message = make_message(index, self, creditor, 'SATISFIED',
+                                       antecedent, consequent)
+                message['reciprocal'] = True
+                message['detached'] = True
+                message['satisfied'] = True
+                self.add_message_to_memory(message, True)
+                # Send offer message to other agent
+                creditor.send_message(message)
+                self.model.released_commitments += 1
+            else:
+                message = make_message(index, self, creditor, 'CANCEL',
+                                       antecedent, consequent)
+                message['reciprocal'] = True
+                message['detached'] = True
+                message['satisfied'] = False
+                self.add_message_to_memory(message, True)
+                # Send offer message to other agent
+                creditor.send_message(message)

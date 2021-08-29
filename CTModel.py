@@ -33,7 +33,7 @@ class CTModel(Model):
         self.width = width
         self.grid = MultiGrid(width, height, False)
         self.schedule = CTSchedule(self, ["offer", "evaluate_offers",
-                                          "execute_commitments"],
+                                          "execute_conditionals", "execute_detached"],
                                    ["move"])
         self._goal = (self.random.randrange(
             self.grid.height), self.random.randrange(self.grid.width))
@@ -49,8 +49,7 @@ class CTModel(Model):
         self.released_commitments = 0
         self.detached_commitments = 0
         self.commitments_created = 0
-        self.offers_sent = 0
-        self.counter_offers_sent = 0
+        self.game_number = 1
         self.agents_negotiating = True
         self.agents_select_path = True
 
@@ -87,9 +86,28 @@ class CTModel(Model):
                 self.schedule.add(tile)
 
     def run_model(self) -> None:
-
         while self.running:
             self.step()
+
+    def reset_model(self) -> None:
+        self.running = True
+        self.agents_negotiating = True
+        self.agents_select_path = True
+        self.released_commitments = 0
+        self.detached_commitments = 0
+        self.commitments_created = 0
+        self._goal = (self.random.randrange(self.grid.height), self.random.randrange(self.grid.width))
+        self.move_agents()
+        self.schedule.steps = 0
+        self.game_number += 1
+
+    def move_agents(self):
+        # Reset agents on the grid
+        agent_list = self.create_agent_list()
+        for agent in agent_list:
+            coords = self.return_coords()
+            self.grid.move_agent(agent, coords)
+            agent.reinitialize_agent(coords)
 
     def add_agents(self):
         # Place agents onto the model
@@ -170,12 +188,17 @@ class CTModel(Model):
     def score_agents(self):
         all_agents = self.create_agent_list()
         for agent in all_agents:
+            score = 0
             tiles_remaining = sum(agent.tiles.values())
             if agent.pos == self.get_goal():
-                agent.score = agent.num_of_moves * 3 + tiles_remaining
+                score = agent.num_of_moves * 3 + tiles_remaining
             else:
-                agent.score = agent.num_of_moves * 1.5 + tiles_remaining
-            print(str(type(agent).__name__) + ' ' + str(agent.unique_id) + ' scored ' + str(agent.score) + ' points.')
+                score = agent.num_of_moves * 1.5 + tiles_remaining
+
+            agent.score += score
+
+    def get_scores(self):
+        return self.agent_scores
 
     def step(self):
         if self.schedule.steps == 15:
@@ -197,10 +220,7 @@ class CTModel(Model):
                 self.running = False
 
                 self.score_agents()
-                # agents = self.create_agent_list()
-                # for agent in agents:
-                #     file_name = str(agent) + '.csv'
-                #     agent.memory.to_csv('/Users/phillip/Documents/thesis/' + file_name)
+
 
         ''' What is a successful negotiation
          is it when tiles are traded?

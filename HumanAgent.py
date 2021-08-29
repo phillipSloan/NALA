@@ -88,8 +88,8 @@ class HumanCTAgent(CTAgent):
             # Send offer message to other agent
             other_agent.send_message(message)
         else:
-            message = make_message(offer_id, self, other_agent, "REJECT",
-                                   tile_offered, tile_wanted)
+            message = make_message(offer_id, other_agent, self, "REJECT",
+                                   tile_wanted, tile_offered)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
             other_agent.send_message(message)
