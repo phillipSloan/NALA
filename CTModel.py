@@ -10,7 +10,7 @@ from SelfishCTAgent import SelfishCTAgent
 from IntelligentCTAgent import IntelligentCTAgent
 from CompetitiveCTAgent import CompetitiveCTAgent
 from HumanAgent import HumanCTAgent
-
+import pandas as pd
 
 def success_negotiations(model):
     return model.released_commitments
@@ -43,7 +43,7 @@ class CTModel(Model):
         self.IntelligentCTAgents = IntelligentCTAgents
         self.CompetitiveCTAgents = CompetitiveCTAgents
         self.HumanCTAgents = HumanCTAgents
-
+        self.agent_scores = {}
         self.add_tiles()
         self.add_agents()
         self.released_commitments = 0
@@ -52,12 +52,13 @@ class CTModel(Model):
         self.game_number = 1
         self.agents_negotiating = True
         self.agents_select_path = True
-
         self._id = 0
 
         self.datacollector = DataCollector(
             model_reporters={"Success": success_negotiations},
         )
+
+
 
     def return_id(self) -> int:
         self._id += 1
@@ -116,36 +117,42 @@ class CTModel(Model):
             agent = CTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
+            self.agent_scores[agent] = []
 
         for i in range(self.CooperativeCTAgents):
             coords = self.return_coords()
             agent = CooperativeCTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
+            self.agent_scores[agent] = []
 
         for i in range(self.SelfishCTAgents):
             coords = self.return_coords()
             agent = SelfishCTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
+            self.agent_scores[agent] = []
 
         for i in range(self.IntelligentCTAgents):
             coords = self.return_coords()
             agent = IntelligentCTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
+            self.agent_scores[agent] = []
 
         for i in range(self.CompetitiveCTAgents):
             coords = self.return_coords()
             agent = CompetitiveCTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
+            self.agent_scores[agent] = []
 
         for i in range(self.HumanCTAgents):
             coords = self.return_coords()
             agent = HumanCTAgent(self.next_id(), self, coords)
             self.schedule.add(agent)
             self.grid.place_agent(agent, coords)
+            self.agent_scores[agent] = []
 
     ''' Returns the tile agent, from an x,y grid coordinate '''
 
@@ -187,15 +194,23 @@ class CTModel(Model):
 
     def score_agents(self):
         all_agents = self.create_agent_list()
+        high_score = 0
+        winning_agent = None
         for agent in all_agents:
-            score = 0
             tiles_remaining = sum(agent.tiles.values())
             if agent.pos == self.get_goal():
                 score = agent.num_of_moves * 3 + tiles_remaining
+                agent.reached_goal += 1
             else:
                 score = agent.num_of_moves * 1.5 + tiles_remaining
 
+            if score > high_score:
+                high_score = score
+                winning_agent = agent
+
+            self.agent_scores[agent].append(score)
             agent.score += score
+        winning_agent.games_won += 1
 
     def get_scores(self):
         return self.agent_scores

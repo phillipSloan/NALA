@@ -11,7 +11,7 @@ class SelfishCTAgent(CTAgent):
         # Checking to see if this trade helps the agent reach the goal
         if self.helpful_trade(tile_offered):
             # Trade is possible - agree to make a commitment
-            message = make_message(offer_id, self, other_agent, "ACCEPT",
+            message = make_message(offer_id, self, self, other_agent, "ACCEPT",
                                    tile_offered, tile_wanted)
             message['reciprocal'] = True
             self.add_message_to_memory(message, True)
@@ -19,7 +19,7 @@ class SelfishCTAgent(CTAgent):
             other_agent.send_message(message)
         else:
             # If Agent does not have these tile to give reject that offer
-            message = make_message(offer_id, other_agent, self, "REJECT",
+            message = make_message(offer_id, self, other_agent, self, "REJECT",
                                    tile_wanted, tile_offered)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent

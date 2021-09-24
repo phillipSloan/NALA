@@ -8,16 +8,17 @@ class CompetitiveCTAgent(CTAgent):
     # A competitive agent will always accept offers
     # So it can then take a tile from the other agent
     def evaluate_offer(self, offer_id, other_agent, tile_wanted, tile_offered):
-        message = make_message(offer_id, self, other_agent, "ACCEPT",
+        message = make_message(offer_id, self, self, other_agent, "ACCEPT",
                                tile_offered, tile_wanted)
-        message['conditional'] = True
+        message['reciprocal'] = True
         self.add_message_to_memory(message, True)
         # Send offer message to other agent
         other_agent.send_message(message)
 
     def execute_detached(self):
+        self.execute_released()
         # Create a list of detached commitments
-        commitments = self.messages[(self.messages['message_type'] == 'DETACH') &
+        commitments = self.messages[(self.messages['message_type'] == 'DETACHED') &
                                     (self.messages['debtor'] == self) &
                                     (self.messages['read'] == False)]
 
@@ -27,9 +28,9 @@ class CompetitiveCTAgent(CTAgent):
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
 
-            message = make_message(index, self, creditor, 'CANCEL',
+            message = make_message(index, self, self, creditor, 'CANCEL',
                                    antecedent, consequent)
-            message['conditional'] = True
+            message['reciprocal'] = True
             message['detached'] = True
             message['satisfied'] = False
             self.add_message_to_memory(message, True)

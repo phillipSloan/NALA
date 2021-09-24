@@ -39,7 +39,7 @@ class HumanCTAgent(CTAgent):
             print('What tile do you want to offer for trade?')
             result = get_choice(colours)
             self.tile_offered = result
-            message = make_message(self.model.return_id(), self, other_agent, "OFFER",
+            message = make_message(self.model.return_id(), self, self, other_agent, "OFFER",
                                    self.tile_wanted, self.tile_offered)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
@@ -81,14 +81,14 @@ class HumanCTAgent(CTAgent):
         print('Do you accept the trade?')
         result = get_choice(offer)
         if result == 'Y' or result == 'Yes':
-            message = make_message(offer_id, self, other_agent, "ACCEPT",
+            message = make_message(offer_id, self, self, other_agent, "ACCEPT",
                                    tile_offered, tile_wanted)
             message['conditional'] = True
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
             other_agent.send_message(message)
         else:
-            message = make_message(offer_id, other_agent, self, "REJECT",
+            message = make_message(offer_id, self, other_agent, self, "REJECT",
                                    tile_wanted, tile_offered)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
@@ -111,7 +111,7 @@ class HumanCTAgent(CTAgent):
         colours.remove(tile_requested)
         print('What colour tile do you want to ask for?')
         result = get_choice(colours)
-        message = make_message(message_id, self, other_agent, "COUNTER",
+        message = make_message(message_id, self, self, other_agent, "COUNTER",
                                result, tile_requested)
         self.add_message_to_memory(message, True)
         # Send offer message to other agent

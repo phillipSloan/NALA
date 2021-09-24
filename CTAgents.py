@@ -1,11 +1,14 @@
+import math
+
 from mesa import Agent
 import pandas as pd
 import random
 
 
-def make_message(message_id, agent, other_agent, message_type, tile_wanted, tile_offered):
+def make_message(message_id, sender, agent, other_agent, message_type, tile_wanted, tile_offered):
     message = {"game_number": [agent.model.game_number],
                "message_id": [message_id],
+               "sender": [sender],
                "read": [False],
                "message_type": [message_type],
                "debtor": [agent],
@@ -74,11 +77,6 @@ class Tile(Agent):
     def execute_detached(self):
         pass
 
-
-def out_of_bounds(model, x, y):
-    return x < 0 or y < 0 or x >= model.grid.height or y >= model.grid.width
-
-
 def longest_path_length(paths):
     maximum = 0
     for path in paths:
@@ -109,6 +107,8 @@ class CTAgent(Agent):
         self.pos = pos
         self.strikes = 0
         self.score = 0
+        self.games_won = 0
+        self.reached_goal = 0
         self.tiles = {'Red': 0, 'Green': 0, 'Blue': 0, 'Yellow': 0, 'Cyan': 0}
         self.path_tiles = {}
         # List of all possible paths from the agents position to the goal
@@ -121,7 +121,7 @@ class CTAgent(Agent):
         self.tile_offered = 'Blank'
         # Dataframe used to store the agents previous games
         self.messages = pd.DataFrame(
-            columns=["game_number", "message_id", "read",
+            columns=["game_number", "message_id", "sender", "read",
                      "message_type", "debtor",
                      "creditor", "antecedent", "consequent",
                      "reciprocal", "detached", "satisfied"])
@@ -137,12 +137,13 @@ class CTAgent(Agent):
         # Agent picks a path to offer on
         self.pick_path()
 
+
     ''' Ensures the Agent has x amount of tiles '''
 
     def populate_agent_tiles(self):
         colours = list(('Red', 'Green', 'Blue', 'Yellow', 'Cyan'))
         x = 0
-        total = int(self.model.get_manhattan() * 0.6)
+        total = math.floor(self.model.get_manhattan() * 0.6)
         while x < total:
             # Popping a random colour out of the colours list
             colour = random.choice(colours)
@@ -156,9 +157,6 @@ class CTAgent(Agent):
 
     def find_all_paths(self, model, path, x, y):
         dx, dy = model.get_goal()
-        # if we are outside of the grid, return
-        if out_of_bounds(model, x, y):
-            return
 
         #  if we are at the destination of the path, add the solution to
         #  the possible paths
@@ -259,13 +257,9 @@ class CTAgent(Agent):
             return False
 
     def select_tile_needed(self):
-        if not self.has_next_tile():
-            _, _, colour = self.path[self.num_of_moves]
-            self.tile_wanted = colour
-        else:
-            for key, value in self.path_tiles.items():
-                if value < 0:
-                    self.tile_wanted = key
+        for key, value in self.path_tiles.items():
+            if value < 0:
+                self.tile_wanted = key
 
     def select_tile_offered(self, other_agent):
         for tile_colour, amount in self.path_tiles.items():
@@ -300,7 +294,7 @@ class CTAgent(Agent):
             self.select_tile_needed()
             if self.select_tile_offered(other_agent):
                 # Record an offered commitment and send the offer to the other agent
-                message = make_message(self.model.return_id(), self, other_agent, "OFFER",
+                message = make_message(self.model.return_id(), self, self, other_agent, "OFFER",
                                        self.tile_wanted, self.tile_offered)
                 self.add_message_to_memory(message, True)
                 # Send offer message to other agent
@@ -316,7 +310,7 @@ class CTAgent(Agent):
                 if amount > 0:
                     if new_colour != tile_offered and new_colour != tile_requested:
                         # Generate Offer
-                        message = make_message(message_id, self, other_agent, "COUNTER",
+                        message = make_message(message_id, self, self, other_agent, "COUNTER",
                                                new_colour, tile_requested)
                         self.add_message_to_memory(message, True)
                         # Send offer message to other agent
@@ -353,7 +347,7 @@ class CTAgent(Agent):
     def evaluate_offer(self, offer_id, other_agent, tile_wanted, tile_offered):
         if self.can_help(tile_wanted):
             # Trade is possible - agree to make a commitment
-            message = make_message(offer_id, self, other_agent, "ACCEPT",
+            message = make_message(offer_id, self, self, other_agent, "ACCEPT",
                                    tile_offered, tile_wanted)
             message['reciprocal'] = True
             self.add_message_to_memory(message, True)
@@ -361,7 +355,7 @@ class CTAgent(Agent):
             other_agent.send_message(message)
         else:
             # If Agent does not have these tile to give reject that offer
-            message = make_message(offer_id, other_agent, self, "REJECT",
+            message = make_message(offer_id, self, other_agent, self, "REJECT",
                                    tile_wanted, tile_offered)
             self.add_message_to_memory(message, True)
             # Send offer message to other agent
@@ -388,7 +382,7 @@ class CTAgent(Agent):
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.send_tile(index, debtor, antecedent):
-                message = make_message(index, debtor, self, 'DETACH',
+                message = make_message(index, self, debtor, self, 'DETACHED',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -397,8 +391,8 @@ class CTAgent(Agent):
                 debtor.send_message(message)
                 self.model.detached_commitments += 1
             else:
-                message = make_message(index, debtor, self, 'RELEASE',
-                                       antecedent, consequent)
+                message = make_message(index, self, self, debtor, 'RELEASE',
+                                       consequent, antecedent)
                 message['reciprocal'] = True
                 message['detached'] = False
                 self.add_message_to_memory(message, True)
@@ -407,7 +401,8 @@ class CTAgent(Agent):
 
     def execute_detached(self):
         # Create a list of detached commitments
-        commitments = self.messages[(self.messages['message_type'] == 'DETACH') &
+        self.execute_released()
+        commitments = self.messages[(self.messages['message_type'] == 'DETACHED') &
                                     (self.messages['debtor'] == self) &
                                     (self.messages['read'] == False)]
 
@@ -417,7 +412,7 @@ class CTAgent(Agent):
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.send_tile(index, creditor, consequent):
-                message = make_message(index, self, creditor, 'SATISFIED',
+                message = make_message(index, self, self, creditor, 'SATISFIED',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -427,7 +422,7 @@ class CTAgent(Agent):
                 creditor.send_message(message)
                 self.model.released_commitments += 1
             else:
-                message = make_message(index, self, creditor, 'CANCEL',
+                message = make_message(index, self, self, creditor, 'CANCEL',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -435,6 +430,25 @@ class CTAgent(Agent):
                 self.add_message_to_memory(message, True)
                 # Send offer message to other agent
                 creditor.send_message(message)
+
+    def execute_released(self):
+        commitments = self.messages[(self.messages['message_type'] == 'RELEASE') &
+                                    (self.messages['debtor'] == self) &
+                                    (self.messages['read'] == False)]
+
+        for index, commitment in commitments.iterrows():
+            self.messages.at[index, 'read'] = True
+            creditor = commitment['creditor']
+            antecedent = commitment['antecedent']
+            consequent = commitment['consequent']
+
+            message = make_message(index, self, creditor, self, 'EXPIRE',
+                                       consequent, antecedent)
+            message['reciprocal'] = True
+            message['detached'] = False
+            self.add_message_to_memory(message, True)
+            # Send offer message to other agent
+            creditor.send_message(message)
 
     def send_tile(self, commitment_id, agent_receiving, tile):
         # remove the tiles from the agent and add them to the agent receiving the tiles
