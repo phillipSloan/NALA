@@ -7,7 +7,7 @@ conditional_commitments = 0
 commitments_detached = 0
 
 model = CTModel(4, 4, CTAgents=1, CooperativeCTAgents=1)
-x = 10
+x = 100
 for i in range(x):
     model.run_model()
     commitments_satisfied += model.released_commitments

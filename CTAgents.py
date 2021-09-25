@@ -20,7 +20,7 @@ def make_message(message_id, sender, agent, other_agent, message_type, tile_want
                "satisfied": [None]
                }
     message = pd.DataFrame(message)
-    message.set_index("message_id", inplace=True)
+    # message.set_index("message_id", inplace=True)
     return message
 
 
@@ -77,6 +77,7 @@ class Tile(Agent):
     def execute_detached(self):
         pass
 
+
 def longest_path_length(paths):
     maximum = 0
     for path in paths:
@@ -125,7 +126,7 @@ class CTAgent(Agent):
                      "message_type", "debtor",
                      "creditor", "antecedent", "consequent",
                      "reciprocal", "detached", "satisfied"])
-        self.messages.set_index("message_id", inplace=True)
+        # self.messages.set_index("message_id", inplace=True)
 
         self.swaps = pd.DataFrame(
             columns=["step", "commitment_id", "agent", "tile"])
@@ -240,7 +241,7 @@ class CTAgent(Agent):
     def add_message_to_memory(self, message, read):
         if read:
             message['read'] = True
-        self.messages = self.messages.append(message)
+        self.messages = self.messages.append(message, ignore_index=True)
         message['read'] = False
 
     def needs_tiles(self):
@@ -332,10 +333,11 @@ class CTAgent(Agent):
         for index, offer in offers.iterrows():
             if offer['debtor'] is not self:
                 debtor = offer['debtor']
+                msg_id = offer['message_id']
                 tile_wanted = offer['antecedent']
                 tile_offered = offer['consequent']
                 self.messages.at[index, 'read'] = True
-                self.evaluate_offer(index, debtor, tile_wanted, tile_offered)
+                self.evaluate_offer(msg_id, debtor, tile_wanted, tile_offered)
             else:
                 creditor = offer['creditor']
                 tile_wanted = offer['consequent']
@@ -379,10 +381,12 @@ class CTAgent(Agent):
         for index, commitment in commitments.iterrows():
             self.messages.at[index, 'read'] = True
             debtor = commitment['debtor']
+            msg_id = commitment['message_id']
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.send_tile(index, debtor, antecedent):
-                message = make_message(index, self, debtor, self, 'DETACHED',
+                self.satisfy_commitment(commitment)
+                message = make_message(msg_id, self, debtor, self, 'DETACHED',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -391,13 +395,28 @@ class CTAgent(Agent):
                 debtor.send_message(message)
                 self.model.detached_commitments += 1
             else:
-                message = make_message(index, self, self, debtor, 'RELEASE',
+                message = make_message(msg_id, self, self, debtor, 'RELEASE',
                                        consequent, antecedent)
                 message['reciprocal'] = True
                 message['detached'] = False
                 self.add_message_to_memory(message, True)
                 # Send offer message to other agent
                 debtor.send_message(message)
+
+
+    def satisfy_commitment(self, commitment):
+        other_agent = commitment['debtor']
+        msg_id = commitment['message_id']
+        offers = self.messages[(self.messages['message_type'] == 'COUNTER') &
+                              (self.messages['message_id'] == msg_id)]
+        if offers.empty:
+            offers = self.messages[(self.messages['message_type'] == 'OFFER') &
+                                (self.messages['message_id'] == msg_id)]
+
+        if not offers.empty:
+            for index, _ in offers.iterrows():
+                self.messages.at[index, 'satisfied'] = True
+                other_agent.messages.at[index, 'satisfied'] = True
 
     def execute_detached(self):
         # Create a list of detached commitments
@@ -408,11 +427,12 @@ class CTAgent(Agent):
 
         for index, commitment in commitments.iterrows():
             self.messages.at[index, 'read'] = True
+            msg_id = commitment['message_id']
             creditor = commitment['creditor']
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.send_tile(index, creditor, consequent):
-                message = make_message(index, self, self, creditor, 'SATISFIED',
+                message = make_message(msg_id, self, self, creditor, 'SATISFIED',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -422,7 +442,7 @@ class CTAgent(Agent):
                 creditor.send_message(message)
                 self.model.released_commitments += 1
             else:
-                message = make_message(index, self, self, creditor, 'CANCEL',
+                message = make_message(msg_id, self, self, creditor, 'CANCEL',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -438,11 +458,12 @@ class CTAgent(Agent):
 
         for index, commitment in commitments.iterrows():
             self.messages.at[index, 'read'] = True
+            msg_id = commitment['message_id']
             creditor = commitment['creditor']
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
 
-            message = make_message(index, self, creditor, self, 'EXPIRE',
+            message = make_message(msg_id, self, creditor, self, 'EXPIRE',
                                        consequent, antecedent)
             message['reciprocal'] = True
             message['detached'] = False
