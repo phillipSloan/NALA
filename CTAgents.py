@@ -385,11 +385,12 @@ class CTAgent(Agent):
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.send_tile(index, debtor, antecedent):
-                self.satisfy_commitment(commitment)
+                # self.satisfy_commitment(commitment)
                 message = make_message(msg_id, self, debtor, self, 'DETACHED',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
+                self.satisfy_commitment(commitment)
                 self.add_message_to_memory(message, True)
                 # Send offer message to other agent
                 debtor.send_message(message)
@@ -403,7 +404,6 @@ class CTAgent(Agent):
                 # Send offer message to other agent
                 debtor.send_message(message)
 
-
     def satisfy_commitment(self, commitment):
         other_agent = commitment['debtor']
         msg_id = commitment['message_id']
@@ -415,8 +415,16 @@ class CTAgent(Agent):
 
         if not offers.empty:
             for index, _ in offers.iterrows():
-                self.messages.at[index, 'satisfied'] = True
-                other_agent.messages.at[index, 'satisfied'] = True
+                # self.messages.at[index, 'satisfied'] = True
+                # other_agent.messages.at[index, 'satisfied'] = True
+                antecedent = commitment['antecedent']
+                consequent = commitment['consequent']
+                message = make_message(msg_id, self, other_agent, self, 'SATISFIED',
+                                       antecedent, consequent)
+                message['satisfied'] = True
+                self.add_message_to_memory(message, True)
+                # Send offer message to other agent
+                other_agent.send_message(message)
 
     def execute_detached(self):
         # Create a list of detached commitments

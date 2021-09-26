@@ -6,7 +6,7 @@ commitments_satisfied = 0
 conditional_commitments = 0
 commitments_detached = 0
 
-model = CTModel(4, 4, CTAgents=1, CooperativeCTAgents=1)
+model = CTModel(4, 4, CooperativeCTAgents=1, CTAgents=1)
 x = 100
 for i in range(x):
     model.run_model()

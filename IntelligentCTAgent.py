@@ -79,11 +79,13 @@ class IntelligentCTAgent(CTAgent):
         for index, commitment in commitments.iterrows():
             self.messages.at[index, 'read'] = True
             debtor = commitment['debtor']
+            msg_id = commitment['message_id']
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
             if self.calculate_swap(debtor) and self.send_tile(index, debtor, antecedent):
-                message = make_message(index, self, debtor, self, 'DETACHED',
+                message = make_message(msg_id, self, debtor, self, 'DETACHED',
                                        antecedent, consequent)
+                # self.satisfy_commitment(commitment)
                 message['reciprocal'] = True
                 message['detached'] = True
                 self.add_message_to_memory(message, True)
@@ -91,7 +93,7 @@ class IntelligentCTAgent(CTAgent):
                 debtor.send_message(message)
                 self.model.detached_commitments += 1
             else:
-                message = make_message(index, self, debtor, self, 'RELEASE',
+                message = make_message(msg_id, self, debtor, self, 'RELEASE',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = False
@@ -108,12 +110,13 @@ class IntelligentCTAgent(CTAgent):
 
         for index, commitment in commitments.iterrows():
             self.messages.at[index, 'read'] = True
+            msg_id = commitment['message_id']
             creditor = commitment['creditor']
             antecedent = commitment['antecedent']
             consequent = commitment['consequent']
 
             if self.calculate_swap(creditor) and self.send_tile(index, creditor, consequent):
-                message = make_message(index, self, self, creditor, 'SATISFIED',
+                message = make_message(msg_id, self, self, creditor, 'SATISFIED',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
@@ -123,7 +126,7 @@ class IntelligentCTAgent(CTAgent):
                 creditor.send_message(message)
                 self.model.released_commitments += 1
             else:
-                message = make_message(index, self, self, creditor, 'CANCEL',
+                message = make_message(msg_id, self, self, creditor, 'CANCEL',
                                        antecedent, consequent)
                 message['reciprocal'] = True
                 message['detached'] = True
